@@ -176,11 +176,16 @@ def obtener_ip_local():
 
 
 if __name__ == "__main__":
-    ip_local = obtener_ip_local()
-    puerto = 5000
-    print("\n" + "=" * 50)
-    print("🚀 Servidor Iniciado")
-    print(f"📱 Abre en el navegador de tu celular: http://{ip_local}:{puerto}")
-    print("=" * 50 + "\n")
+    # Render asigna dinámicamente un puerto a través de la variable de entorno PORT.
+    # Si no existe (estás en tu PC), usa por defecto el puerto 5000.
+    puerto = int(os.environ.get("PORT", 5000))
+    
+    # Puedes mantener tu lógica local solo si quieres verificarlo en tu máquina:
+    try:
+        ip_local = obtener_ip_local()
+        print(f"📱 Local: http://{ip_local}:{puerto}")
+    except Exception:
+        pass
 
-    app.run(host="0.0.0.0", port=puerto, debug=True)
+    # host="0.0.0.0" es obligatorio en Render para que escuche peticiones externas
+    app.run(host="0.0.0.0", port=puerto, debug=False)
