@@ -95,9 +95,7 @@ def procesar():
             "image_base64": encoded_string,
         }
 
-        # ==========================================
-        # 2. AQUÍ ESTÁ EL CAMBIO (Añadir el puerto 5678)
-        # ==========================================
+        # 2. Webhook con el puerto 5678
         url_webhook = (
             "http://sitecdesarrollo.172.10.219.15.sslip.io:5678/webhook/factura/datos"
         )
@@ -105,12 +103,19 @@ def procesar():
         session = requests.Session()
         session.trust_env = False
 
-        response = session.post(
-            url_webhook,
-            json=payload,
-            verify=False,
-            headers={"Connection": "close"},
-        )
+        try:
+            # Se añade un timeout de 5 segundos para evitar que Gunicorn sufra un Worker Timeout
+            response = session.post(
+                url_webhook,
+                json=payload,
+                verify=False,
+                headers={"Connection": "close"},
+                timeout=5
+            )
+        except requests.exceptions.Timeout:
+            return "Error: El servidor n8n tardó demasiado en responder o la red de Render lo bloqueó (Timeout).", 500
+        except requests.exceptions.ConnectionError:
+            return "Error de conexión: Render no puede alcanzar la IP de n8n por restricciones de red.", 500
 
         print(f"Estado de la respuesta: {response.status_code}")
 
