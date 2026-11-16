@@ -1,30 +1,10 @@
 import base64
+import json
 import os
-import socket
 from flask import Flask, render_template_string, request
 import gspread
-import requests
-import urllib3
-
-# Silenciar advertencias de certificados SSL
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
-
-
-def parse_numero(val):
-    """Convierte texto numérico con comas (ej. '360,00') a float o int limpio."""
-    if isinstance(val, (int, float)):
-        return val
-    if not val:
-        return 0
-    val_clean = str(val).replace(".", "").replace(",", ".")
-    try:
-        f = float(val_clean)
-        return int(f) if f.is_integer() else f
-    except ValueError:
-        return val
-
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -71,11 +51,9 @@ HTML_TEMPLATE = """
 </html>
 """
 
-
 @app.route("/", methods=["GET"])
 def index():
     return render_template_string(HTML_TEMPLATE)
-
 
 @app.route("/procesar", methods=["POST"])
 def procesar():
@@ -87,38 +65,33 @@ def procesar():
         return "No se seleccionó ningún archivo.", 400
 
     try:
-        # 1. Leer y codificar la imagen
-        encoded_string = base64.b64encode(file.read()).decode("utf-8")
+        # 1. Cargar credenciales desde la variable de entorno de Render
+        credenciales_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+        if not credenciales_json:
+            return "Error: La variable de entorno GOOGLE_CREDENTIALS_JSON no está configurada en Render.", 500
 
-        # Nota: Aquí puedes integrar tu lógica de procesamiento o llamada interna si lo deseas, 
-        # o registrar directamente los datos en Google Sheets.
+        creds_dict = json.loads(credenciales_json)
+        gc = gspread.service_account_from_dict(creds_dict)
         
-        # 2. Conexión con Google Sheets
-        ruta_credenciales = os.path.join(
-            os.path.dirname(__file__), "credentials.json"
-        )
-        gc = gspread.service_account(filename=ruta_credenciales)
         sh = gc.open("Emisor Facturas")
         worksheet = sh.sheet1
 
-        # 3. Datos de ejemplo o extraídos de la factura
+        # 2. Datos de prueba para registrar en Google Sheets
         nueva_fila = [
-            "2026-11-16",           # Fecha de Solicitud
-            "Usuario Celular",      # Solicitante
-            "Parqueadero Principal",# Parqueadero
-            "Cliente General",      # Razón social
-            "0999999999001",        # RUC o CI
-            1,                      # Cantidad
-            file.filename,          # Descripción
-            0,                      # Subtotal
-            15,                     # % IVA
-            0,                      # Total
-            "Efectivo"              # Forma de Pago
+            "2026-11-16",
+            "Usuario Celular",
+            "Parqueadero Principal",
+            "Cliente General",
+            "0999999999001",
+            1,
+            file.filename,
+            0,
+            15,
+            0,
+            "Efectivo"
         ]
 
-        # 4. Insertar la fila en Google Sheets
         worksheet.append_row(nueva_fila, value_input_option="USER_ENTERED")
-        print("Fila agregada exitosamente a Google Sheets.")
 
         return """
         <div style="font-family: sans-serif; text-align: center; padding: 40px;">
@@ -129,9 +102,8 @@ def procesar():
         """
 
     except Exception as e:
-        print(f"Ocurrió un error en la ejecución: {e}")
+        print(f"Ocurrió un error: {e}")
         return f"Ocurrió un error en la ejecución: {e}", 500
-
 
 if __name__ == "__main__":
     puerto = int(os.environ.get("PORT", 5000))
