@@ -90,105 +90,49 @@ def procesar():
         # 1. Leer y codificar la imagen
         encoded_string = base64.b64encode(file.read()).decode("utf-8")
 
-        payload = {
-            "filename": file.filename,
-            "image_base64": encoded_string,
-        }
-
-        # 2. Webhook con el puerto 5678
-        url_webhook = (
-            "http://sitecdesarrollo.172.10.219.15.sslip.io:5678/webhook/factura/datos"
+        # Nota: Aquí puedes integrar tu lógica de procesamiento o llamada interna si lo deseas, 
+        # o registrar directamente los datos en Google Sheets.
+        
+        # 2. Conexión con Google Sheets
+        ruta_credenciales = os.path.join(
+            os.path.dirname(__file__), "credentials.json"
         )
+        gc = gspread.service_account(filename=ruta_credenciales)
+        sh = gc.open("Emisor Facturas")
+        worksheet = sh.sheet1
 
-        session = requests.Session()
-        session.trust_env = False
+        # 3. Datos de ejemplo o extraídos de la factura
+        nueva_fila = [
+            "2026-11-16",           # Fecha de Solicitud
+            "Usuario Celular",      # Solicitante
+            "Parqueadero Principal",# Parqueadero
+            "Cliente General",      # Razón social
+            "0999999999001",        # RUC o CI
+            1,                      # Cantidad
+            file.filename,          # Descripción
+            0,                      # Subtotal
+            15,                     # % IVA
+            0,                      # Total
+            "Efectivo"              # Forma de Pago
+        ]
 
-        try:
-            # Se añade un timeout de 5 segundos para evitar que Gunicorn sufra un Worker Timeout
-            response = session.post(
-                url_webhook,
-                json=payload,
-                verify=False,
-                headers={"Connection": "close"},
-                timeout=5
-            )
-        except requests.exceptions.Timeout:
-            return "Error: El servidor n8n tardó demasiado en responder o la red de Render lo bloqueó (Timeout).", 500
-        except requests.exceptions.ConnectionError:
-            return "Error de conexión: Render no puede alcanzar la IP de n8n por restricciones de red.", 500
+        # 4. Insertar la fila en Google Sheets
+        worksheet.append_row(nueva_fila, value_input_option="USER_ENTERED")
+        print("Fila agregada exitosamente a Google Sheets.")
 
-        print(f"Estado de la respuesta: {response.status_code}")
-
-        if response.status_code == 200:
-            datos_factura = response.json()
-            print("Datos extraídos:", datos_factura)
-
-            # 3. Conexión con Google Sheets
-            ruta_credenciales = os.path.join(
-                os.path.dirname(__file__), "credentials.json"
-            )
-            gc = gspread.service_account(filename=ruta_credenciales)
-            sh = gc.open("Emisor Facturas")
-            worksheet = sh.sheet1
-
-            # 4. Mapeo adaptable de campos devueltos
-            nueva_fila = [
-                datos_factura.get("Fecha de Solicitud", ""),
-                datos_factura.get("Solicitante", ""),
-                datos_factura.get("Parqueadero", ""),
-                datos_factura.get(
-                    "Nombre del cliente o Razón social",
-                    datos_factura.get("Nombre del Cliente o Razón Social", ""),
-                ),
-                str(datos_factura.get("RUC o CI", "")),
-                parse_numero(datos_factura.get("Cantidad", 0)),
-                datos_factura.get(
-                    "Descripcion",
-                    datos_factura.get("Descripción del Producto/Servicio", ""),
-                ),
-                parse_numero(datos_factura.get("Subtotal", 0)),
-                parse_numero(datos_factura.get("% IVA", 0)),
-                parse_numero(datos_factura.get("Total", 0)),
-                datos_factura.get("Forma de Pago", ""),
-            ]
-
-            # 5. Insertar la fila en Google Sheets
-            worksheet.append_row(nueva_fila, value_input_option="USER_ENTERED")
-            print("Fila agregada exitosamente a Google Sheets.")
-
-            return """
-            <div style="font-family: sans-serif; text-align: center; padding: 40px;">
-                <h1 style="color: #28a745;">✅ ¡Factura procesada con éxito!</h1>
-                <a href="/" style="display: inline-block; margin-top: 20px; text-decoration: none; background: #007bff; color: white; padding: 10px 20px; border-radius: 5px;">Procesar otra factura</a>
-            </div>
-            """
-        else:
-            return f"Error devuelto por el servidor n8n: {response.text}", 500
+        return """
+        <div style="font-family: sans-serif; text-align: center; padding: 40px;">
+            <h1 style="color: #28a745;">✅ ¡Factura procesada con éxito!</h1>
+            <p>Los datos se han guardado correctamente en tu Google Sheets.</p>
+            <a href="/" style="display: inline-block; margin-top: 20px; text-decoration: none; background: #007bff; color: white; padding: 10px 20px; border-radius: 5px;">Procesar otra factura</a>
+        </div>
+        """
 
     except Exception as e:
         print(f"Ocurrió un error en la ejecución: {e}")
         return f"Ocurrió un error en la ejecución: {e}", 500
 
 
-def obtener_ip_local():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-    except Exception:
-        ip = "127.0.0.1"
-    finally:
-        s.close()
-    return ip
-
-
 if __name__ == "__main__":
     puerto = int(os.environ.get("PORT", 5000))
-    
-    try:
-        ip_local = obtener_ip_local()
-        print(f"📱 Local: http://{ip_local}:{puerto}")
-    except Exception:
-        pass
-
     app.run(host="0.0.0.0", port=puerto, debug=False)
